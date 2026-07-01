@@ -12,10 +12,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 try:
     from zoneinfo import ZoneInfo
@@ -86,17 +87,26 @@ def url_quote(value: str) -> str:
     return urllib.parse.quote(value, safe="")
 
 
-def build_url(url: str, params: dict[str, Any] | None = None) -> str:
+QueryParams = Mapping[str, Any] | Iterable[tuple[str, Any]]
+
+
+def _clean_param_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        return [_clean_param_value(item) for item in value if item is not None]
+    return value
+
+
+def build_url(url: str, params: QueryParams | None = None) -> str:
     if not params:
         return url
-    clean: dict[str, Any] = {}
-    for key, value in params.items():
+    clean: list[tuple[str, Any]] = []
+    items = params.items() if isinstance(params, Mapping) else params
+    for key, value in items:
         if value is None:
             continue
-        if isinstance(value, bool):
-            clean[key] = "true" if value else "false"
-        else:
-            clean[key] = value
+        clean.append((key, _clean_param_value(value)))
     query = urllib.parse.urlencode(clean, doseq=True)
     sep = "&" if "?" in url else "?"
     return url + (sep + query if query else "")
@@ -107,7 +117,7 @@ def request(
     url: str,
     *,
     token: str | None = None,
-    params: dict[str, Any] | None = None,
+    params: QueryParams | None = None,
     json_body: Any = None,
     data: bytes | None = None,
     headers: dict[str, str] | None = None,
