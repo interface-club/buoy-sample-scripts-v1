@@ -90,11 +90,9 @@ def url_quote(value: str) -> str:
 QueryParams = Mapping[str, Any] | Iterable[tuple[str, Any]]
 
 
-def _clean_param_value(value: Any) -> Any:
+def query_value(value: Any) -> Any:
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, (list, tuple)):
-        return [_clean_param_value(item) for item in value if item is not None]
     return value
 
 
@@ -106,7 +104,10 @@ def build_url(url: str, params: QueryParams | None = None) -> str:
     for key, value in items:
         if value is None:
             continue
-        clean.append((key, _clean_param_value(value)))
+        if isinstance(value, (list, tuple)):
+            clean.extend((key, query_value(item)) for item in value if item is not None)
+        else:
+            clean.append((key, query_value(value)))
     query = urllib.parse.urlencode(clean, doseq=True)
     sep = "&" if "?" in url else "?"
     return url + (sep + query if query else "")
