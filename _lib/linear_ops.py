@@ -28,6 +28,23 @@ creator { id name displayName email }
 labels(first: 50) { nodes { id name color } }
 """
 
+SEARCH_RESULT_FIELDS = """
+id
+identifier
+number
+title
+url
+priority
+priorityLabel
+createdAt
+updatedAt
+archivedAt
+team { id key name }
+state { id name type position }
+assignee { id name displayName email }
+metadata
+"""
+
 COMMENT_FIELDS = """
 id
 body
@@ -150,12 +167,7 @@ def search_issues() -> None:
 query SearchIssues($term: String!, $first: Int, $after: String, $includeArchived: Boolean, $includeComments: Boolean, $teamId: String, $filter: IssueFilter) {{
   searchIssues(term: $term, first: $first, after: $after, includeArchived: $includeArchived, includeComments: $includeComments, teamId: $teamId, filter: $filter) {{
     nodes {{
-      id
-      title
-      identifier
-      url
-      metadata
-      issue {{ {ISSUE_FIELDS} }}
+      {SEARCH_RESULT_FIELDS}
     }}
     pageInfo {{ hasNextPage endCursor }}
     totalCount
