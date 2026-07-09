@@ -126,6 +126,9 @@ def request(
 ) -> tuple[int, bytes, Any]:
     url = build_url(url, params)
     req_headers = dict(headers or {})
+    # Cloudflare bans urllib's default Python-urllib User-Agent on some
+    # provider APIs (Ramp returns 403 error code 1010).
+    req_headers.setdefault("User-Agent", "Buoy/1.0")
     if token is not None:
         req_headers["Authorization"] = f"Bearer {token}"
     if json_body is not None:
