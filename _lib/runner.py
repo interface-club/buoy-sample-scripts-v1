@@ -11,6 +11,8 @@ OPS = {
     "google-docs": "docs_ops",
     "google-sheets": "sheets_ops",
     "google-slides": "slides_ops",
+    "linear": "linear_ops",
+    "ramp": "ramp_ops",
 }
 
 
