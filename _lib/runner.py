@@ -12,7 +12,9 @@ OPS = {
     "google-sheets": "sheets_ops",
     "google-slides": "slides_ops",
     "linear": "linear_ops",
+    "notion": "notion_ops",
     "ramp": "ramp_ops",
+    "slack": "slack_ops",
 }
 
 
