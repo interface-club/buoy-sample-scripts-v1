@@ -30,6 +30,7 @@ class ScriptError(Exception):
 
 
 _active_connection: ContextVar[dict[str, Any] | None] = ContextVar("active_connection", default=None)
+_active_page_token: ContextVar[str | None] = ContextVar("active_page_token", default=None)
 _captured_json: ContextVar[list[Any] | None] = ContextVar("captured_json", default=None)
 
 
@@ -98,6 +99,18 @@ def select_connection(connection: dict[str, Any]):
 
 def reset_connection(token: Any) -> None:
     _active_connection.reset(token)
+
+
+def active_page_token() -> str:
+    return _active_page_token.get() or ""
+
+
+def select_page_token(page_token: str | None):
+    return _active_page_token.set(page_token)
+
+
+def reset_page_token(token: Any) -> None:
+    _active_page_token.reset(token)
 
 
 def capture_json():

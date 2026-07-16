@@ -17,7 +17,9 @@ from _lib.google_api import (
     capture_json,
     reset_connection,
     reset_json_capture,
+    reset_page_token,
     select_connection,
+    select_page_token,
 )
 
 OPS = {
@@ -61,6 +63,12 @@ DISCOVERY_OPERATIONS = {
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
 
+# These searches may be narrowed to one active connection. Their continuation
+# tokens are accepted only through the paired CLI arguments, never environment variables.
+SELECTABLE_PAGINATED_DISCOVERY_OPERATIONS = {
+    "gmail": {"search_messages"},
+}
+
 # Pure string parsing helpers neither consume nor select a connection.
 LOCAL_OPERATIONS = {
     "google-docs": {"extract_document_id"},
@@ -81,29 +89,61 @@ def run(script_path: Path) -> None:
     if handler is None:
         raise SystemExit(f"No Python handler for {service}/{script_path.name}")
     try:
-        connection_id = _parse_connection_id(script_path)
+        args = _parse_args(script_path)
         if operation in LOCAL_OPERATIONS.get(service, set()):
-            if connection_id is not None:
+            if args.buoy_connection_id is not None or args.page_token is not None:
                 raise ScriptError(
                     f"{service}/{script_path.name} is a local operation and does not accept "
-                    "--buoy-connection-id."
+                    "connection or pagination arguments."
                 )
             _print_result(_invoke(handler, None))
             return
 
         connections = _provider_connections(PROVIDERS[service])
         if operation in DISCOVERY_OPERATIONS.get(service, set()):
-            if connection_id is not None:
+            selectable = operation in SELECTABLE_PAGINATED_DISCOVERY_OPERATIONS.get(
+                service, set()
+            )
+            if args.page_token is not None and args.buoy_connection_id is None:
+                raise ScriptError(
+                    f"{service}/{script_path.name} requires --buoy-connection-id together "
+                    "with --page-token so the continuation token is used with its owning "
+                    "connection."
+                )
+            if not selectable and (
+                args.buoy_connection_id is not None or args.page_token is not None
+            ):
                 raise ScriptError(
                     f"{service}/{script_path.name} searches every active {PROVIDERS[service]} "
-                    "connection and does not accept --buoy-connection-id."
+                    "connection and does not accept connection or pagination arguments."
                 )
-            results = asyncio.run(_run_discovery(handler, connections))
+            selected_connections = connections
+            if args.buoy_connection_id is not None:
+                selected_connections = [
+                    _select_target_connection(
+                        service,
+                        script_path.name,
+                        PROVIDERS[service],
+                        connections,
+                        args.buoy_connection_id,
+                    )
+                ]
+            results = asyncio.run(
+                _run_discovery(handler, selected_connections, args.page_token)
+            )
             print(json.dumps(results, indent=2, ensure_ascii=False))
             return
 
+        if args.page_token is not None:
+            raise ScriptError(
+                f"{service}/{script_path.name} does not accept --page-token."
+            )
         connection = _select_target_connection(
-            service, script_path.name, PROVIDERS[service], connections, connection_id
+            service,
+            script_path.name,
+            PROVIDERS[service],
+            connections,
+            args.buoy_connection_id,
         )
         _print_result(_invoke(handler, connection))
     except ScriptError as exc:
@@ -111,7 +151,7 @@ def run(script_path: Path) -> None:
         raise SystemExit(1) from None
 
 
-def _parse_connection_id(script_path: Path) -> str | None:
+def _parse_args(script_path: Path) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog=str(script_path))
     parser.add_argument(
         "--buoy-connection-id",
@@ -120,7 +160,11 @@ def _parse_connection_id(script_path: Path) -> str | None:
             "continuation, or mutation"
         ),
     )
-    return parser.parse_args().buoy_connection_id
+    parser.add_argument(
+        "--page-token",
+        help="account-specific continuation token for a supported discovery operation",
+    )
+    return parser.parse_args()
 
 
 def _select_target_connection(
@@ -196,8 +240,13 @@ def _provider_connections(provider: str) -> list[Connection]:
     return connections
 
 
-def _invoke(handler: Callable[[], None], connection: Connection | None) -> Any:
+def _invoke(
+    handler: Callable[[], None],
+    connection: Connection | None,
+    page_token: str | None = None,
+) -> Any:
     connection_token = select_connection(connection) if connection is not None else None
+    page_token_context = select_page_token(page_token)
     capture_token, captured = capture_json()
     try:
         if connection is not None and connection["expiresAt"] <= time.time() * 1000:
@@ -211,16 +260,19 @@ def _invoke(handler: Callable[[], None], connection: Connection | None) -> Any:
         return captured[0]
     finally:
         reset_json_capture(capture_token)
+        reset_page_token(page_token_context)
         if connection_token is not None:
             reset_connection(connection_token)
 
 
 async def _run_discovery(
-    handler: Callable[[], None], connections: list[Connection]
+    handler: Callable[[], None],
+    connections: list[Connection],
+    page_token: str | None = None,
 ) -> list[dict[str, Any]]:
     async def invoke(connection: Connection) -> dict[str, Any]:
         try:
-            data = await asyncio.to_thread(_invoke, handler, connection)
+            data = await asyncio.to_thread(_invoke, handler, connection, page_token)
             return {"$connectionID": connection["connectionID"], "$ok": True, "$data": data}
         except BaseException as exc:
             return {

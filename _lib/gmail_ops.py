@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from .google_api import *
 
 BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
+SEARCH_HYDRATION_WORKERS = 8
 
 
 def base() -> str:
@@ -138,24 +141,136 @@ def reply_in_thread() -> None:
 
 
 def search_messages() -> None:
+    if env("PAGE_TOKEN", ""):
+        fail(
+            "PAGE_TOKEN is no longer supported. Pass --page-token together with "
+            "--buoy-connection-id."
+        )
     query = env("QUERY", "from:alice@example.com newer_than:30d -in:trash")
-    max_total = env_int("MAX_TOTAL", 200)
+    max_results_per_connection = env_int("MAX_RESULTS_PER_CONNECTION", 6)
     page_size = min(env_int("PAGE_SIZE", 100), 500)
-    page_token = env("PAGE_TOKEN", "")
+    if max_results_per_connection < 1:
+        fail("MAX_RESULTS_PER_CONNECTION must be at least 1")
+    if page_size < 1:
+        fail("PAGE_SIZE must be at least 1")
+    page_token = active_page_token()
+    token = access_token()
     results = []
     while True:
-        params = {"q": query, "maxResults": page_size}
+        remaining = max_results_per_connection - len(results)
+        params = {"q": query, "maxResults": min(page_size, remaining)}
         if page_token:
             params["pageToken"] = page_token
-        payload = request_json("GET", f"{base()}/messages", token=access_token(), params=params)
+        payload = request_json("GET", f"{base()}/messages", token=token, params=params)
         for msg in payload.get("messages", []):
             results.append({"id": msg.get("id"), "threadId": msg.get("threadId"), "permalink": gmail_permalink(msg.get("id", ""))})
-            if len(results) >= max_total:
+            if len(results) >= max_results_per_connection:
                 break
         page_token = payload.get("nextPageToken") or ""
-        if not page_token or len(results) >= max_total:
+        if not page_token or len(results) >= max_results_per_connection:
             break
-    print_json({"query": query, "messages": results, "nextPageToken": page_token or None})
+    if not results:
+        print_json(
+            {
+                "query": query,
+                "messages": [],
+                "detailErrors": [],
+                "labelError": None,
+                "nextPageToken": page_token or None,
+            }
+        )
+        return
+
+    service_base = base()
+    metadata_params = [
+        ("format", "metadata"),
+        ("metadataHeaders", "From"),
+        ("metadataHeaders", "Subject"),
+        ("metadataHeaders", "Date"),
+    ]
+    with ThreadPoolExecutor(max_workers=SEARCH_HYDRATION_WORKERS) as executor:
+        labels_future = executor.submit(
+            request_json, "GET", f"{service_base}/labels", token=token
+        )
+        metadata_futures = [
+            executor.submit(
+                request_json,
+                "GET",
+                f"{service_base}/messages/{url_quote(message['id'])}",
+                token=token,
+                params=metadata_params,
+            )
+            for message in results
+        ]
+
+        raw_messages: list[dict[str, Any] | None] = []
+        detail_errors = []
+        for message, future in zip(results, metadata_futures):
+            try:
+                raw_messages.append(future.result())
+            except BaseException as exc:
+                raw_messages.append(None)
+                detail_errors.append(
+                    {
+                        "id": message["id"],
+                        "threadId": message["threadId"],
+                        "permalink": message["permalink"],
+                        "error": _search_error_data(exc),
+                    }
+                )
+
+        label_error = None
+        try:
+            labels_payload = labels_future.result()
+            label_names = {
+                label["id"]: label.get("name", label["id"])
+                for label in labels_payload.get("labels", [])
+                if label.get("id")
+            }
+        except BaseException as exc:
+            label_names = {}
+            label_error = _search_error_data(exc)
+
+    hydrated = []
+    for listed, message in zip(results, raw_messages):
+        if message is None:
+            continue
+        headers = header_map(message)
+        label_ids = message.get("labelIds", []) or []
+        message_id = message.get("id") or listed["id"]
+        hydrated.append(
+            {
+                "id": message_id,
+                "threadId": message.get("threadId") or listed["threadId"],
+                "permalink": gmail_permalink(message_id),
+                "from": headers.get("from", ""),
+                "subject": headers.get("subject", ""),
+                "date": headers.get("date", ""),
+                "labelIds": label_ids,
+                "labelNames": [label_names.get(label_id, label_id) for label_id in label_ids],
+                "snippet": message.get("snippet", ""),
+            }
+        )
+    print_json(
+        {
+            "query": query,
+            "messages": hydrated,
+            "detailErrors": detail_errors,
+            "labelError": label_error,
+            "nextPageToken": page_token or None,
+        }
+    )
+
+
+def _search_error_data(exc: BaseException) -> Any:
+    if isinstance(exc, HTTPStatusError):
+        try:
+            body: Any = json.loads(exc.text)
+        except json.JSONDecodeError:
+            body = exc.text
+        return {"status": exc.status, "error": body}
+    message = str(exc)
+    return message if message else exc.__class__.__name__
 
 
 def send_email() -> None:
