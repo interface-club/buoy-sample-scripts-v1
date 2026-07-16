@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Iterable, Mapping
+from contextvars import ContextVar
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -28,6 +29,10 @@ class ScriptError(Exception):
     pass
 
 
+_active_connection: ContextVar[dict[str, Any] | None] = ContextVar("active_connection", default=None)
+_captured_json: ContextVar[list[Any] | None] = ContextVar("captured_json", default=None)
+
+
 class HTTPStatusError(Exception):
     def __init__(self, status: int, body: bytes, headers: Any):
         self.status = status
@@ -41,8 +46,7 @@ class HTTPStatusError(Exception):
 
 
 def fail(message: str, code: int = 1) -> None:
-    print(message, file=sys.stderr)
-    raise SystemExit(code)
+    raise ScriptError(message)
 
 
 def env(name: str, default: str | None = None, *, required: bool = False) -> str:
@@ -80,7 +84,29 @@ def env_json(name: str, default: Any = None, *, required: bool = False) -> Any:
 
 
 def access_token() -> str:
-    return env("ACCESS_TOKEN", required=True)
+    connection = _active_connection.get()
+    if connection is None:
+        raise ScriptError(
+            "No active connection is selected. Run this script through its sample-script launcher."
+        )
+    return connection["accessToken"]
+
+
+def select_connection(connection: dict[str, Any]):
+    return _active_connection.set(connection)
+
+
+def reset_connection(token: Any) -> None:
+    _active_connection.reset(token)
+
+
+def capture_json():
+    values: list[Any] = []
+    return _captured_json.set(values), values
+
+
+def reset_json_capture(token: Any) -> None:
+    _captured_json.reset(token)
 
 
 def url_quote(value: str) -> str:
@@ -170,7 +196,11 @@ def request_bytes(method: str, url: str, **kwargs: Any) -> bytes:
 
 
 def print_json(value: Any) -> None:
-    print(json.dumps(value, indent=2, ensure_ascii=False))
+    captured = _captured_json.get()
+    if captured is None:
+        print(json.dumps(value, indent=2, ensure_ascii=False))
+    else:
+        captured.append(value)
 
 
 def print_jsonl(values: Iterable[Any]) -> None:

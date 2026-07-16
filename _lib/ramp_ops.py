@@ -9,6 +9,13 @@ from .google_api import *
 
 BASE = "https://api.ramp.com/developer/v1"
 
+FUND_PERMITTED_SPEND_TYPE_KEYS = {"physical_card", "virtual_card", "reimbursements"}
+FUND_PERMITTED_SPEND_TYPE_ALIASES = {
+    "physical_card_enabled": "physical_card",
+    "virtual_card_enabled": "virtual_card",
+    "reimbursements_enabled": "reimbursements",
+}
+
 
 def ramp_base() -> str:
     return env("RAMP_BASE_URL", BASE).rstrip("/")
@@ -157,6 +164,39 @@ def get_fund() -> None:
     print_json(ramp_json("GET", f"/funds/{url_quote(env('FUND_ID', required=True))}"))
 
 
+def validate_create_fund_body(body: Any) -> None:
+    if not isinstance(body, dict):
+        fail("Fund create body must be a JSON object")
+
+    permitted = body.get("permitted_spend_types")
+    if permitted is not None:
+        if not isinstance(permitted, dict):
+            fail("permitted_spend_types must be a JSON object")
+        alias_keys = sorted(set(permitted) & set(FUND_PERMITTED_SPEND_TYPE_ALIASES))
+        if alias_keys:
+            replacements = ", ".join(f"{key} -> {FUND_PERMITTED_SPEND_TYPE_ALIASES[key]}" for key in alias_keys)
+            fail(f"permitted_spend_types uses response-style keys; use Ramp create keys instead: {replacements}")
+        unknown_keys = sorted(set(permitted) - FUND_PERMITTED_SPEND_TYPE_KEYS)
+        if unknown_keys:
+            expected = ", ".join(sorted(FUND_PERMITTED_SPEND_TYPE_KEYS))
+            fail(f"permitted_spend_types has unknown keys {unknown_keys}; expected only: {expected}")
+
+    spending_restrictions = body.get("spending_restrictions")
+    if _contains_minor_unit_conversion_rate(spending_restrictions):
+        fail("spending_restrictions.limit must not include minor_unit_conversion_rate; send limit.amount in the smallest currency unit")
+
+
+def _contains_minor_unit_conversion_rate(value: Any) -> bool:
+    if isinstance(value, dict):
+        limit = value.get("limit")
+        if isinstance(limit, dict) and "minor_unit_conversion_rate" in limit:
+            return True
+        return any(_contains_minor_unit_conversion_rate(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_minor_unit_conversion_rate(item) for item in value)
+    return False
+
+
 def create_fund() -> None:
     body = env_json("BODY_JSON", None)
     if body is None:
@@ -178,6 +218,7 @@ def create_fund() -> None:
             value = env_json(env_name, None)
             if value is not None:
                 body[key] = value
+    validate_create_fund_body(body)
     print_json(ramp_json("POST", "/funds", body=body))
 
 
