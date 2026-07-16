@@ -63,10 +63,43 @@ DISCOVERY_OPERATIONS = {
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
 
-# These searches may be narrowed to one active connection. Their continuation
-# tokens are accepted only through the paired CLI arguments, never environment variables.
-SELECTABLE_PAGINATED_DISCOVERY_OPERATIONS = {
+# Discovery operations with provider pagination accept --page-token only when
+# paired with --buoy-connection-id, because cursors belong to one connection.
+PAGINATED_DISCOVERY_OPERATIONS = {
     "gmail": {"search_messages"},
+    "google-calendar": {"list_calendars"},
+    "google-drive": {"list_shared_drives", "search_files"},
+    "google-docs": {"find_documents"},
+    "google-sheets": {"find_spreadsheets"},
+    "google-slides": {"find_presentations"},
+    "linear": {"list_labels", "list_teams", "list_users", "list_workflow_states", "search_issues"},
+    "notion": {"search"},
+    "ramp": {"list_funds", "list_reimbursements", "list_users", "list_virtual_cards"},
+    "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
+}
+
+LEGACY_DISCOVERY_CURSOR_ENVS = {
+    ("gmail", "search_messages"): ("PAGE_TOKEN",),
+    ("google-calendar", "list_calendars"): ("PAGE_TOKEN",),
+    ("google-drive", "list_shared_drives"): ("PAGE_TOKEN",),
+    ("google-drive", "search_files"): ("PAGE_TOKEN", "ONE_PAGE"),
+    ("google-docs", "find_documents"): ("PAGE_TOKEN",),
+    ("google-sheets", "find_spreadsheets"): ("NEXT_PAGE_TOKEN",),
+    ("google-slides", "find_presentations"): ("PAGE_TOKEN",),
+    ("linear", "list_labels"): ("AFTER",),
+    ("linear", "list_teams"): ("AFTER",),
+    ("linear", "list_users"): ("AFTER",),
+    ("linear", "list_workflow_states"): ("AFTER",),
+    ("linear", "search_issues"): ("AFTER",),
+    ("notion", "search"): ("START_CURSOR",),
+    ("ramp", "list_funds"): ("START",),
+    ("ramp", "list_reimbursements"): ("START",),
+    ("ramp", "list_users"): ("START",),
+    ("ramp", "list_virtual_cards"): ("START",),
+    ("slack", "find_conversation"): ("CURSOR",),
+    ("slack", "list_conversations"): ("CURSOR",),
+    ("slack", "list_users"): ("CURSOR",),
+    ("slack", "search_messages"): ("CURSOR",),
 }
 
 # Pure string parsing helpers neither consume nor select a connection.
@@ -101,21 +134,18 @@ def run(script_path: Path) -> None:
 
         connections = _provider_connections(PROVIDERS[service])
         if operation in DISCOVERY_OPERATIONS.get(service, set()):
-            selectable = operation in SELECTABLE_PAGINATED_DISCOVERY_OPERATIONS.get(
-                service, set()
-            )
+            _reject_legacy_discovery_cursor_envs(service, operation, script_path.name)
+            paginated = operation in PAGINATED_DISCOVERY_OPERATIONS.get(service, set())
             if args.page_token is not None and args.buoy_connection_id is None:
                 raise ScriptError(
                     f"{service}/{script_path.name} requires --buoy-connection-id together "
                     "with --page-token so the continuation token is used with its owning "
                     "connection."
                 )
-            if not selectable and (
-                args.buoy_connection_id is not None or args.page_token is not None
-            ):
+            if args.page_token is not None and not paginated:
                 raise ScriptError(
-                    f"{service}/{script_path.name} searches every active {PROVIDERS[service]} "
-                    "connection and does not accept connection or pagination arguments."
+                    f"{service}/{script_path.name} does not support pagination and does not "
+                    "accept --page-token."
                 )
             selected_connections = connections
             if args.buoy_connection_id is not None:
@@ -156,8 +186,8 @@ def _parse_args(script_path: Path) -> argparse.Namespace:
     parser.add_argument(
         "--buoy-connection-id",
         help=(
-            "active connection ID to use for a targeted read, account operation, download, "
-            "continuation, or mutation"
+            "active connection ID to use for a narrowed discovery, targeted read, account "
+            "operation, download, continuation, or mutation"
         ),
     )
     parser.add_argument(
@@ -165,6 +195,17 @@ def _parse_args(script_path: Path) -> argparse.Namespace:
         help="account-specific continuation token for a supported discovery operation",
     )
     return parser.parse_args()
+
+
+def _reject_legacy_discovery_cursor_envs(
+    service: str, operation: str, script_name: str
+) -> None:
+    for env_name in LEGACY_DISCOVERY_CURSOR_ENVS.get((service, operation), ()):
+        if os.environ.get(env_name):
+            raise ScriptError(
+                f"{env_name} is no longer supported for {service}/{script_name}. Pass "
+                "--page-token together with --buoy-connection-id."
+            )
 
 
 def _select_target_connection(

@@ -66,6 +66,8 @@ def list_shared_drives() -> None:
     params = {"pageSize": env_int("PAGE_SIZE", 100), "fields": "nextPageToken,drives(id,name,createdTime,hidden)"}
     if env("QUERY", ""):
         params["q"] = env("QUERY")
+    if active_page_token():
+        params["pageToken"] = active_page_token()
     print_json(request_json("GET", f"{BASE}/drives", token=access_token(), params=params))
 
 
@@ -83,20 +85,17 @@ def remove_permission() -> None:
 def search_files() -> None:
     query = env("QUERY", "name contains 'invoice' and trashed=false")
     page_size = env_int("PAGE_SIZE", 50)
-    page_token = env("PAGE_TOKEN", "")
-    files = []
-    next_token = None
-    while True:
-        params = {"q": query, "pageSize": page_size, "fields": "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,driveId,modifiedTime,size,webViewLink,capabilities/canDownload)", "supportsAllDrives": True, "includeItemsFromAllDrives": True}
-        if page_token:
-            params["pageToken"] = page_token
-        payload = request_json("GET", f"{BASE}/files", token=access_token(), params=params)
-        files.extend(payload.get("files", []))
-        next_token = payload.get("nextPageToken")
-        if not next_token or env_bool("ONE_PAGE", False):
-            break
-        page_token = next_token
-    print_json({"files": files, "nextPageToken": next_token})
+    params = {"q": query, "pageSize": page_size, "fields": "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,driveId,modifiedTime,size,webViewLink,capabilities/canDownload)", "supportsAllDrives": True, "includeItemsFromAllDrives": True}
+    if active_page_token():
+        params["pageToken"] = active_page_token()
+    payload = request_json("GET", f"{BASE}/files", token=access_token(), params=params)
+    print_json(
+        {
+            "files": payload.get("files", []),
+            "incompleteSearch": payload.get("incompleteSearch", False),
+            "nextPageToken": payload.get("nextPageToken"),
+        }
+    )
 
 
 def search_shared_drive() -> None:

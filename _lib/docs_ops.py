@@ -54,8 +54,8 @@ def find_documents() -> None:
     query_text = drive_query_literal(env("QUERY", required=True))
     drive_q = f"mimeType = 'application/vnd.google-apps.document' and trashed = false and name contains '{query_text}'"
     params = {"q": drive_q, "pageSize": env_int("PAGE_SIZE", 10), "fields": "nextPageToken,incompleteSearch,files(id,name,webViewLink,modifiedTime,owners(emailAddress),capabilities(canEdit,canShare))", "supportsAllDrives": True, "includeItemsFromAllDrives": True}
-    if env("PAGE_TOKEN", ""):
-        params["pageToken"] = env("PAGE_TOKEN")
+    if active_page_token():
+        params["pageToken"] = active_page_token()
     print_json(request_json("GET", f"{DRIVE}/files", token=access_token(), params=params))
 
 

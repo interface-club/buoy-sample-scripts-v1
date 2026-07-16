@@ -59,7 +59,10 @@ def export_spreadsheet() -> None:
 
 
 def find_spreadsheets() -> None:
-    print_json(request_json("GET", f"{DRIVE}/files", token=access_token(), params={"q": env("QUERY", "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"), "pageSize": env_int("PAGE_SIZE", 20), "supportsAllDrives": True, "includeItemsFromAllDrives": True, "fields": "nextPageToken,files(id,name,webViewLink,modifiedTime,owners(emailAddress),mimeType)"}))
+    params = {"q": env("QUERY", "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"), "pageSize": env_int("PAGE_SIZE", 20), "supportsAllDrives": True, "includeItemsFromAllDrives": True, "fields": "nextPageToken,files(id,name,webViewLink,modifiedTime,owners(emailAddress),mimeType)"}
+    if active_page_token():
+        params["pageToken"] = active_page_token()
+    print_json(request_json("GET", f"{DRIVE}/files", token=access_token(), params=params))
 
 
 def get_spreadsheet_structure() -> None:

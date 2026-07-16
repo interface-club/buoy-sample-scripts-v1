@@ -104,7 +104,10 @@ def find_presentations_in_folder() -> None:
 def find_presentations() -> None:
     text = drive_query_literal(env("QUERY_TEXT", required=True))
     query = f"mimeType='application/vnd.google-apps.presentation' and trashed=false and name contains '{text}'"
-    print_json(request_json("GET", f"{DRIVE}/files", token=access_token(), params={"q": query, "pageSize": env_int("PAGE_SIZE", 20), "supportsAllDrives": True, "includeItemsFromAllDrives": True, "fields": "nextPageToken,files(id,name,webViewLink,modifiedTime,owners(displayName,emailAddress),driveId)"}))
+    params = {"q": query, "pageSize": env_int("PAGE_SIZE", 20), "supportsAllDrives": True, "includeItemsFromAllDrives": True, "fields": "nextPageToken,files(id,name,webViewLink,modifiedTime,owners(displayName,emailAddress),driveId)"}
+    if active_page_token():
+        params["pageToken"] = active_page_token()
+    print_json(request_json("GET", f"{DRIVE}/files", token=access_token(), params=params))
 
 
 def get_slide_thumbnail() -> None:

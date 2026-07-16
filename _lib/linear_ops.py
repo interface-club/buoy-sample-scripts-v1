@@ -90,8 +90,8 @@ def graphql(query: str, variables: dict[str, Any] | None = None) -> Any:
 
 def _connection_args() -> dict[str, Any]:
     args: dict[str, Any] = {"first": env_int("FIRST", 50), "includeArchived": env_bool("INCLUDE_ARCHIVED", False)}
-    if env("AFTER", ""):
-        args["after"] = env("AFTER")
+    if active_page_token():
+        args["after"] = active_page_token()
     return args
 
 

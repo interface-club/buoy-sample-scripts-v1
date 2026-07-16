@@ -141,11 +141,6 @@ def reply_in_thread() -> None:
 
 
 def search_messages() -> None:
-    if env("PAGE_TOKEN", ""):
-        fail(
-            "PAGE_TOKEN is no longer supported. Pass --page-token together with "
-            "--buoy-connection-id."
-        )
     query = env("QUERY", "from:alice@example.com newer_than:30d -in:trash")
     max_results_per_connection = env_int("MAX_RESULTS_PER_CONNECTION", 6)
     page_size = min(env_int("PAGE_SIZE", 100), 500)
@@ -156,12 +151,15 @@ def search_messages() -> None:
     page_token = active_page_token()
     token = access_token()
     results = []
+    result_size_estimate = None
     while True:
         remaining = max_results_per_connection - len(results)
         params = {"q": query, "maxResults": min(page_size, remaining)}
         if page_token:
             params["pageToken"] = page_token
         payload = request_json("GET", f"{base()}/messages", token=token, params=params)
+        if result_size_estimate is None:
+            result_size_estimate = payload.get("resultSizeEstimate")
         for msg in payload.get("messages", []):
             results.append({"id": msg.get("id"), "threadId": msg.get("threadId"), "permalink": gmail_permalink(msg.get("id", ""))})
             if len(results) >= max_results_per_connection:
@@ -173,6 +171,7 @@ def search_messages() -> None:
         print_json(
             {
                 "query": query,
+                "resultSizeEstimate": result_size_estimate,
                 "messages": [],
                 "detailErrors": [],
                 "labelError": None,
@@ -254,6 +253,7 @@ def search_messages() -> None:
     print_json(
         {
             "query": query,
+            "resultSizeEstimate": result_size_estimate,
             "messages": hydrated,
             "detailErrors": detail_errors,
             "labelError": label_error,

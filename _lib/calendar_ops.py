@@ -35,18 +35,32 @@ def event_summary(event: dict[str, Any], calendar: dict[str, Any] | None = None,
 
 def list_calendars() -> None:
     min_role = env("MIN_ACCESS_ROLE", "reader")
-    page_token = env("PAGE_TOKEN", "")
-    calendars = []
-    while True:
-        params = {"maxResults": 250, "minAccessRole": min_role}
-        if page_token:
-            params["pageToken"] = page_token
-        payload = request_json("GET", f"{BASE}/users/me/calendarList", token=access_token(), params=params)
-        calendars.extend({"id": c.get("id"), "summary": c.get("summary"), "primary": c.get("primary", False), "accessRole": c.get("accessRole"), "timeZone": c.get("timeZone"), "selected": c.get("selected", False)} for c in payload.get("items", []))
-        page_token = payload.get("nextPageToken") or ""
-        if not page_token:
-            break
-    print_json(calendars)
+    params = {
+        "maxResults": min(env_int("PAGE_SIZE", 250), 250),
+        "minAccessRole": min_role,
+    }
+    if active_page_token():
+        params["pageToken"] = active_page_token()
+    payload = request_json(
+        "GET", f"{BASE}/users/me/calendarList", token=access_token(), params=params
+    )
+    calendars = [
+        {
+            "id": calendar.get("id"),
+            "summary": calendar.get("summary"),
+            "primary": calendar.get("primary", False),
+            "accessRole": calendar.get("accessRole"),
+            "timeZone": calendar.get("timeZone"),
+            "selected": calendar.get("selected", False),
+        }
+        for calendar in payload.get("items", [])
+    ]
+    print_json(
+        {
+            "calendars": calendars,
+            "nextPageToken": payload.get("nextPageToken"),
+        }
+    )
 
 
 def list_events() -> None:

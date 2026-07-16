@@ -65,8 +65,8 @@ def search() -> None:
     body: dict[str, Any] = {"page_size": env_int("PAGE_SIZE", 100)}
     if env("QUERY", ""):
         body["query"] = env("QUERY")
-    if env("START_CURSOR", ""):
-        body["start_cursor"] = env("START_CURSOR")
+    if active_page_token():
+        body["start_cursor"] = active_page_token()
     object_type = env("OBJECT_TYPE", "")
     if object_type:
         if object_type not in {"page", "data_source"}:

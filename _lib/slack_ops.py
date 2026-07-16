@@ -53,8 +53,8 @@ def list_conversations() -> None:
         "exclude_archived": env_bool("EXCLUDE_ARCHIVED", True),
         "limit": env_int("LIMIT", 200),
     }
-    if env("CURSOR", ""):
-        query["cursor"] = env("CURSOR")
+    if active_page_token():
+        query["cursor"] = active_page_token()
     if env("TEAM_ID", ""):
         query["team_id"] = env("TEAM_ID")
     print_json(slack_json("GET", "conversations.list", query=query))
@@ -62,7 +62,7 @@ def list_conversations() -> None:
 
 def find_conversation() -> None:
     target = env("NAME", required=True).removeprefix("#").casefold()
-    cursor = env("CURSOR", "")
+    cursor = active_page_token()
     max_pages = env_int("MAX_PAGES", 20)
     matches: list[dict[str, Any]] = []
     scanned = 0
@@ -133,10 +133,9 @@ def search_messages() -> None:
         "sort": env("SORT", "timestamp"),
         "sort_dir": env("SORT_DIR", "desc"),
     }
-    query.update(optional_query([
-        ("CURSOR", "cursor"),
-        ("TEAM_ID", "team_id"),
-    ]))
+    query.update(optional_query([("TEAM_ID", "team_id")]))
+    if active_page_token():
+        query["cursor"] = active_page_token()
     if env("HIGHLIGHT", ""):
         query["highlight"] = env_bool("HIGHLIGHT", False)
     print_json(slack_json("GET", "search.messages", query=query))
@@ -144,10 +143,9 @@ def search_messages() -> None:
 
 def list_users() -> None:
     query: dict[str, Any] = {"limit": env_int("LIMIT", 200)}
-    query.update(optional_query([
-        ("CURSOR", "cursor"),
-        ("TEAM_ID", "team_id"),
-    ]))
+    query.update(optional_query([("TEAM_ID", "team_id")]))
+    if active_page_token():
+        query["cursor"] = active_page_token()
     if env("INCLUDE_LOCALE", ""):
         query["include_locale"] = env_bool("INCLUDE_LOCALE", False)
     print_json(slack_json("GET", "users.list", query=query))

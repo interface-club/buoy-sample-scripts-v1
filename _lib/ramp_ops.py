@@ -29,8 +29,8 @@ def params(names: list[str]) -> dict[str, Any]:
             out[name] = value
     if env("PAGE_SIZE", ""):
         out["page_size"] = env_int("PAGE_SIZE", 20)
-    if env("START", ""):
-        out["start"] = env("START")
+    if active_page_token():
+        out["start"] = active_page_token()
     return out
 
 
