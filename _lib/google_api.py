@@ -32,6 +32,11 @@ class ScriptError(Exception):
 _active_connection: ContextVar[dict[str, Any] | None] = ContextVar("active_connection", default=None)
 _active_page_token: ContextVar[str | None] = ContextVar("active_page_token", default=None)
 _captured_json: ContextVar[list[Any] | None] = ContextVar("captured_json", default=None)
+_EMAIL_ADDRESS_RE = re.compile(
+    r"^(?!\.)(?!.*\.\.)([a-z0-9_'+\-\.]*)[a-z0-9_+-]@"
+    r"([a-z0-9][a-z0-9\-]*\.)+[a-z]{2,}$",
+    re.IGNORECASE,
+)
 
 
 class HTTPStatusError(Exception):
@@ -276,10 +281,13 @@ def header_map(message_or_payload: dict[str, Any]) -> dict[str, str]:
     return {h.get("name", "").lower(): h.get("value", "") for h in payload.get("headers", [])}
 
 
-def gmail_permalink(message_id: str, account_email: str | None = None) -> str:
-    email = account_email or env("ACCOUNT_EMAIL", "")
-    auth = urllib.parse.quote(email) if email else "0"
-    return f"https://mail.google.com/mail/?authuser={auth}#all/{message_id}"
+def gmail_permalink(message_id: str) -> str:
+    connection = _active_connection.get()
+    friendly_id = connection.get("friendlyID") if connection is not None else None
+    if isinstance(friendly_id, str) and _EMAIL_ADDRESS_RE.fullmatch(friendly_id):
+        authuser = urllib.parse.quote(friendly_id, safe="")
+        return f"https://mail.google.com/mail/?authuser={authuser}#all/{message_id}"
+    return f"https://mail.google.com/mail/#all/{message_id}"
 
 
 def first_plain_text(part: dict[str, Any]) -> str:
