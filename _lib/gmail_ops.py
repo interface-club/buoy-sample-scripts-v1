@@ -142,10 +142,8 @@ def reply_in_thread() -> None:
 
 def search_messages() -> None:
     query = env("QUERY", "from:alice@example.com newer_than:30d -in:trash")
-    max_results_per_connection = env_int("MAX_RESULTS_PER_CONNECTION", 6)
+    max_results_per_connection = max(1, 12 // active_provider_connection_count("google"))
     page_size = min(env_int("PAGE_SIZE", 100), 500)
-    if max_results_per_connection < 1:
-        fail("MAX_RESULTS_PER_CONNECTION must be at least 1")
     if page_size < 1:
         fail("PAGE_SIZE must be at least 1")
     page_token = active_page_token()
