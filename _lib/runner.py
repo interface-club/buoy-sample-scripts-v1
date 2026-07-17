@@ -246,7 +246,7 @@ def _load_connections() -> list[Connection]:
     raw = os.environ.get("BUOY_CONNECTIONS")
     if raw is None or raw == "":
         raise ScriptError(
-            "BUOY_CONNECTIONS is not set. Call set_active_connections before running connector scripts."
+            "BUOY_CONNECTIONS is not set. Load the app skill before running connector scripts."
         )
     try:
         value = json.loads(raw)
@@ -276,7 +276,7 @@ def _provider_connections(provider: str) -> list[Connection]:
     connections = [connection for connection in _load_connections() if connection["provider"] == provider]
     if not connections:
         raise ScriptError(
-            f"No active {provider} connection. Call set_active_connections with at least one {provider} connection."
+            f"No active {provider} connection. Load the {provider} app skill before running connector scripts."
         )
     return connections
 
@@ -293,7 +293,7 @@ def _invoke(
         if connection is not None and connection["expiresAt"] <= time.time() * 1000:
             raise ScriptError(
                 f"The active token for connection {connection['connectionID']} has expired. "
-                "Call set_active_connections again before retrying."
+                "Call reset_active_connections again before retrying."
             )
         handler()
         if len(captured) != 1:
