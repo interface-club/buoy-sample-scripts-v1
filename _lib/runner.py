@@ -266,8 +266,10 @@ def _load_connections() -> list[Connection]:
         if not isinstance(connection.get("friendlyID"), str):
             raise ScriptError(f"BUOY_CONNECTIONS[{index}].friendlyID must be a string.")
         expires_at = connection.get("expiresAt")
-        if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool):
-            raise ScriptError(f"BUOY_CONNECTIONS[{index}].expiresAt must be Unix milliseconds.")
+        if expires_at is not None and (
+            not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool)
+        ):
+            raise ScriptError(f"BUOY_CONNECTIONS[{index}].expiresAt must be Unix milliseconds or null.")
         connections.append(connection)
     return connections
 
@@ -290,10 +292,14 @@ def _invoke(
     page_token_context = select_page_token(page_token)
     capture_token, captured = capture_json()
     try:
-        if connection is not None and connection["expiresAt"] <= time.time() * 1000:
+        if (
+            connection is not None
+            and connection["expiresAt"] is not None
+            and connection["expiresAt"] <= time.time() * 1000
+        ):
             raise ScriptError(
                 f"The active token for connection {connection['connectionID']} has expired. "
-                "Call reset_active_connections again before retrying."
+                "Call recover_connection for this connection before retrying."
             )
         handler()
         if len(captured) != 1:
