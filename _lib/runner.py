@@ -31,6 +31,8 @@ OPS = {
     "google-slides": "slides_ops",
     "linear": "linear_ops",
     "notion": "notion_ops",
+    "outlook": "outlook_ops",
+    "outlook-calendar": "outlook_calendar_ops",
     "ramp": "ramp_ops",
     "slack": "slack_ops",
 }
@@ -44,6 +46,8 @@ PROVIDERS = {
     "google-slides": "google",
     "linear": "linear",
     "notion": "notion",
+    "outlook": "microsoft",
+    "outlook-calendar": "microsoft",
     "ramp": "ramp",
     "slack": "slack",
 }
@@ -59,6 +63,8 @@ DISCOVERY_OPERATIONS = {
     "google-slides": {"find_presentations"},
     "linear": {"list_labels", "list_teams", "list_users", "list_workflow_states", "search_issues"},
     "notion": {"search"},
+    "outlook": {"list_categories", "list_mail_folders", "search_messages"},
+    "outlook-calendar": {"find_next_upcoming_event", "list_calendars"},
     "ramp": {"list_funds", "list_reimbursements", "list_users", "list_virtual_cards"},
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
@@ -74,6 +80,8 @@ PAGINATED_DISCOVERY_OPERATIONS = {
     "google-slides": {"find_presentations"},
     "linear": {"list_labels", "list_teams", "list_users", "list_workflow_states", "search_issues"},
     "notion": {"search"},
+    "outlook": {"list_categories", "list_mail_folders", "search_messages"},
+    "outlook-calendar": {"list_calendars"},
     "ramp": {"list_funds", "list_reimbursements", "list_users", "list_virtual_cards"},
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
@@ -92,6 +100,10 @@ LEGACY_DISCOVERY_CURSOR_ENVS = {
     ("linear", "list_workflow_states"): ("AFTER",),
     ("linear", "search_issues"): ("AFTER",),
     ("notion", "search"): ("START_CURSOR",),
+    ("outlook", "list_categories"): ("PAGE_TOKEN",),
+    ("outlook", "list_mail_folders"): ("PAGE_TOKEN",),
+    ("outlook", "search_messages"): ("PAGE_TOKEN",),
+    ("outlook-calendar", "list_calendars"): ("PAGE_TOKEN",),
     ("ramp", "list_funds"): ("START",),
     ("ramp", "list_reimbursements"): ("START",),
     ("ramp", "list_users"): ("START",),
