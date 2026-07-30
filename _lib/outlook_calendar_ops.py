@@ -15,6 +15,14 @@ EVENT_SELECT = (
 )
 
 
+def output_time_zone() -> str:
+    return env("OUTPUT_TIME_ZONE", "") or env("TIME_ZONE", "UTC")
+
+
+def event_time_zone() -> str:
+    return env("EVENT_TIME_ZONE", "") or env("TIME_ZONE", "UTC")
+
+
 def list_calendars() -> None:
     page_url = active_page_token()
     params = None
@@ -39,7 +47,7 @@ def list_events() -> None:
     calendar_id = env("CALENDAR_ID", "primary")
     time_min = env("TIME_MIN", required=True)
     time_max = env("TIME_MAX", required=True)
-    time_zone = env("TIME_ZONE", "UTC")
+    time_zone = output_time_zone()
     query = env("QUERY", "").casefold()
     calendar = _get_calendar(calendar_id)
     url = calendar_view_path(calendar_id)
@@ -79,7 +87,7 @@ def find_next_upcoming_event() -> None:
     time_max = env("TIME_MAX", iso_z(lower_bound + timedelta(days=30)))
     events_per_calendar = max(2, env_int("EVENTS_PER_CALENDAR", 10))
     include_all_day = env_bool("INCLUDE_ALL_DAY", True)
-    time_zone = env("TIME_ZONE", "UTC")
+    time_zone = output_time_zone()
     calendar_ids = env_json("CALENDAR_IDS_JSON", None)
     if calendar_ids is not None and (
         not isinstance(calendar_ids, list)
@@ -106,12 +114,15 @@ def find_next_upcoming_event() -> None:
         }
         accepted = 0
         while url and accepted < events_per_calendar:
+            # Graph returns dateTimeTimeZone values without numeric offsets. Request UTC
+            # while comparing candidates because Python zoneinfo does not understand
+            # Windows labels such as "Pacific Standard Time".
             payload = request_json(
                 "GET",
                 url,
                 token=access_token(),
                 params=params,
-                headers=graph_headers(time_zone=time_zone),
+                headers=graph_headers(time_zone="UTC"),
             )
             params = None
             for event in payload.get("value", []):
@@ -132,6 +143,22 @@ def find_next_upcoming_event() -> None:
         print_json(None)
         return
     instant, is_all_day, calendar, event = candidates[0]
+    calendar_id = calendar.get("id")
+    event_id = event.get("id")
+    if (
+        time_zone.casefold() != "utc"
+        and isinstance(calendar_id, str)
+        and calendar_id
+        and isinstance(event_id, str)
+        and event_id
+    ):
+        event = request_json(
+            "GET",
+            event_path(calendar_id, event_id),
+            token=access_token(),
+            params={"$select": EVENT_SELECT},
+            headers=graph_headers(time_zone=time_zone),
+        )
     result = event_summary(event, calendar)
     result.update(
         {
@@ -152,7 +179,7 @@ def get_event_details() -> None:
         params={"$select": EVENT_SELECT},
         headers=graph_headers(
             body_type=env("BODY_CONTENT_TYPE", "text"),
-            time_zone=env("TIME_ZONE", "UTC"),
+            time_zone=output_time_zone(),
         ),
     )
     print_json({key: event.get(key) for key in _event_detail_keys()})
@@ -209,7 +236,7 @@ def create_event() -> None:
         fail("EVENT_JSON must be a JSON object")
     body = _normalize_event_patch(body)
     all_day = env_bool("ALL_DAY", False)
-    time_zone = env("TIME_ZONE", "UTC")
+    time_zone = event_time_zone()
     if "subject" not in body:
         body["subject"] = env("SUMMARY", required=True)
     if "start" not in body or "end" not in body:
@@ -367,7 +394,7 @@ def initial_event_sync() -> None:
     _require_primary_calendar()
     time_min = env("TIME_MIN", required=True)
     time_max = env("TIME_MAX", required=True)
-    time_zone = env("TIME_ZONE", "UTC")
+    time_zone = output_time_zone()
     url = f"{graph_base()}/me/calendarView/delta"
     params: dict[str, Any] | None = {
         "startDateTime": time_min,
@@ -409,7 +436,7 @@ def incremental_event_sync() -> None:
                 url,
                 token=access_token(),
                 headers=graph_headers(
-                    time_zone=env("TIME_ZONE", "UTC"),
+                    time_zone=output_time_zone(),
                     max_page_size=min(max(env_int("PAGE_SIZE", 250), 1), 999),
                 ),
             )
