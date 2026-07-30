@@ -99,7 +99,8 @@ def find_next_upcoming_event() -> None:
         if calendar_ids
         else _all_calendars()
     )
-    candidates = []
+    ongoing_candidates = []
+    future_candidates = []
     for calendar in calendars:
         calendar_id = calendar.get("id")
         if not isinstance(calendar_id, str) or not calendar_id:
@@ -112,8 +113,8 @@ def find_next_upcoming_event() -> None:
             "$orderby": "start/dateTime",
             "$top": min(events_per_calendar, 1000),
         }
-        accepted = 0
-        while url and accepted < events_per_calendar:
+        future_count = 0
+        while url and future_count < events_per_calendar:
             # Graph returns dateTimeTimeZone values without numeric offsets. Request UTC
             # while comparing candidates because Python zoneinfo does not understand
             # Windows labels such as "Pacific Standard Time".
@@ -131,42 +132,40 @@ def find_next_upcoming_event() -> None:
                 is_all_day = bool(event.get("isAllDay"))
                 if is_all_day and not include_all_day:
                     continue
-                instant = graph_datetime(event.get("start"))
-                if instant is None or instant < lower_bound:
+                start_instant = graph_datetime(event.get("start"))
+                end_instant = graph_datetime(event.get("end"))
+                if start_instant is None:
                     continue
-                candidates.append((instant, is_all_day, calendar, event))
-                accepted += 1
+                candidate = (
+                    start_instant,
+                    end_instant,
+                    is_all_day,
+                    calendar,
+                    event,
+                )
+                if start_instant < lower_bound:
+                    if end_instant is not None and end_instant > lower_bound:
+                        ongoing_candidates.append(candidate)
+                    continue
+                future_candidates.append(candidate)
+                future_count += 1
             next_url = next_link(payload)
             url = trusted_graph_url(next_url) if next_url else ""
-    candidates.sort(key=lambda item: item[0])
-    if not candidates:
-        print_json(None)
-        return
-    instant, is_all_day, calendar, event = candidates[0]
-    calendar_id = calendar.get("id")
-    event_id = event.get("id")
-    if (
-        time_zone.casefold() != "utc"
-        and isinstance(calendar_id, str)
-        and calendar_id
-        and isinstance(event_id, str)
-        and event_id
-    ):
-        event = request_json(
-            "GET",
-            event_path(calendar_id, event_id),
-            token=access_token(),
-            params={"$select": EVENT_SELECT},
-            headers=graph_headers(time_zone=time_zone),
-        )
-    result = event_summary(event, calendar)
-    result.update(
+    ongoing_candidates.sort(key=lambda item: item[0])
+    future_candidates.sort(key=lambda item: item[0])
+    print_json(
         {
-            "startInstant": iso_z(instant),
-            "isAllDay": is_all_day,
+            "ongoingEvents": [
+                _discovery_event_result(candidate, time_zone)
+                for candidate in ongoing_candidates
+            ],
+            "nextEvent": (
+                _discovery_event_result(future_candidates[0], time_zone)
+                if future_candidates
+                else None
+            ),
         }
     )
-    print_json(result)
 
 
 def get_event_details() -> None:
@@ -450,6 +449,44 @@ def incremental_event_sync() -> None:
             raise SystemExit(2)
         raise
     print_json({"events": events, "nextDeltaLink": final_delta_link})
+
+
+def _discovery_event_result(
+    candidate: tuple[
+        datetime,
+        datetime | None,
+        bool,
+        dict[str, Any],
+        dict[str, Any],
+    ],
+    output_time_zone: str,
+) -> dict[str, Any]:
+    start_instant, end_instant, is_all_day, calendar, event = candidate
+    calendar_id = calendar.get("id")
+    event_id = event.get("id")
+    if (
+        output_time_zone.casefold() != "utc"
+        and isinstance(calendar_id, str)
+        and calendar_id
+        and isinstance(event_id, str)
+        and event_id
+    ):
+        event = request_json(
+            "GET",
+            event_path(calendar_id, event_id),
+            token=access_token(),
+            params={"$select": EVENT_SELECT},
+            headers=graph_headers(time_zone=output_time_zone),
+        )
+    result = event_summary(event, calendar)
+    result.update(
+        {
+            "startInstant": iso_z(start_instant),
+            "endInstant": iso_z(end_instant) if end_instant is not None else None,
+            "isAllDay": is_all_day,
+        }
+    )
+    return result
 
 
 def _calendar_summary(calendar: dict[str, Any]) -> dict[str, Any]:
