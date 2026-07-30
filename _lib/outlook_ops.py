@@ -1,6 +1,19 @@
 from __future__ import annotations
 
 from .microsoft_graph import *
+from .outlook_calendar_ops import (
+    check_free_busy,
+    create_event,
+    delete_event,
+    find_next_upcoming_event,
+    get_event_details,
+    incremental_event_sync,
+    initial_event_sync,
+    list_calendars,
+    list_events,
+    update_event,
+    update_event_guests,
+)
 
 MESSAGE_SELECT = (
     "id,conversationId,internetMessageId,webLink,from,toRecipients,subject,"
