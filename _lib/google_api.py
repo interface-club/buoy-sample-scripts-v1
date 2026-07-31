@@ -98,6 +98,15 @@ def access_token() -> str:
     return connection["accessToken"]
 
 
+def connection_field(name: str) -> Any:
+    connection = _active_connection.get()
+    if connection is None:
+        raise ScriptError(
+            "No active connection is selected. Run this script through its sample-script launcher."
+        )
+    return connection.get(name)
+
+
 def select_connection(connection: dict[str, Any]):
     return _active_connection.set(connection)
 

@@ -32,6 +32,7 @@ OPS = {
     "linear": "linear_ops",
     "notion": "notion_ops",
     "outlook": "outlook_ops",
+    "posthog": "posthog_ops",
     "ramp": "ramp_ops",
     "slack": "slack_ops",
 }
@@ -46,6 +47,7 @@ PROVIDERS = {
     "linear": "linear",
     "notion": "notion",
     "outlook": "microsoft",
+    "posthog": "posthog",
     "ramp": "ramp",
     "slack": "slack",
 }
@@ -68,6 +70,14 @@ DISCOVERY_OPERATIONS = {
         "list_mail_folders",
         "search_messages",
     },
+    "posthog": {
+        "list_annotations",
+        "list_dashboards",
+        "list_feature_flags",
+        "list_insights",
+        "list_organizations",
+        "list_projects",
+    },
     "ramp": {"list_funds", "list_reimbursements", "list_users", "list_virtual_cards"},
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
@@ -84,6 +94,14 @@ PAGINATED_DISCOVERY_OPERATIONS = {
     "linear": {"list_labels", "list_teams", "list_users", "list_workflow_states", "search_issues"},
     "notion": {"search"},
     "outlook": {"list_calendars", "list_categories", "list_mail_folders", "search_messages"},
+    "posthog": {
+        "list_annotations",
+        "list_dashboards",
+        "list_feature_flags",
+        "list_insights",
+        "list_organizations",
+        "list_projects",
+    },
     "ramp": {"list_funds", "list_reimbursements", "list_users", "list_virtual_cards"},
     "slack": {"find_conversation", "list_conversations", "list_users", "search_messages"},
 }
@@ -284,6 +302,13 @@ def _load_connections() -> list[Connection]:
             not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool)
         ):
             raise ScriptError(f"BUOY_CONNECTIONS[{index}].expiresAt must be Unix milliseconds or null.")
+        api_base_url = connection.get("apiBaseURL")
+        if api_base_url is not None and (
+            not isinstance(api_base_url, str) or api_base_url == ""
+        ):
+            raise ScriptError(
+                f"BUOY_CONNECTIONS[{index}].apiBaseURL must be a non-empty string when present."
+            )
         connections.append(connection)
     return connections
 
