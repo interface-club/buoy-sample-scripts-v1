@@ -6,6 +6,18 @@ from urllib.parse import urlparse
 from .google_api import *
 
 CLOUD_BASE_URLS = ("https://us.posthog.com", "https://eu.posthog.com")
+SENSITIVE_RESPONSE_FIELDS = frozenset({"api_token"})
+
+
+def _redact_sensitive_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]" if key in SENSITIVE_RESPONSE_FIELDS else _redact_sensitive_fields(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_sensitive_fields(item) for item in value]
+    return value
 
 
 def _api_base_url() -> str:
@@ -32,14 +44,16 @@ def posthog_json(
     accept: tuple[int, ...] = (200, 201, 202, 204),
 ) -> Any:
     base_url = _api_base_url()
-    return request_json(
-        method,
-        f"{base_url}{path}",
-        token=access_token(),
-        params=query,
-        json_body=body,
-        headers={"Accept": "application/json"},
-        accept=accept,
+    return _redact_sensitive_fields(
+        request_json(
+            method,
+            f"{base_url}{path}",
+            token=access_token(),
+            params=query,
+            json_body=body,
+            headers={"Accept": "application/json"},
+            accept=accept,
+        )
     )
 
 
@@ -47,11 +61,13 @@ def paginated_get(path: str, query: dict[str, Any]) -> Any:
     base_url = _api_base_url()
     page_token = active_page_token()
     if page_token:
-        result = request_json(
-            "GET",
-            _trusted_page_url(page_token, base_url),
-            token=access_token(),
-            headers={"Accept": "application/json"},
+        result = _redact_sensitive_fields(
+            request_json(
+                "GET",
+                _trusted_page_url(page_token, base_url),
+                token=access_token(),
+                headers={"Accept": "application/json"},
+            )
         )
     else:
         result = posthog_json("GET", path, query=query)
@@ -71,11 +87,13 @@ def pagination_query() -> dict[str, Any]:
 
 def get_current_user() -> None:
     base_url = _api_base_url()
-    identity = request_json(
-        "GET",
-        f"{base_url}/api/users/@me/",
-        token=access_token(),
-        headers={"Accept": "application/json"},
+    identity = _redact_sensitive_fields(
+        request_json(
+            "GET",
+            f"{base_url}/api/users/@me/",
+            token=access_token(),
+            headers={"Accept": "application/json"},
+        )
     )
     print_json({"baseURL": base_url, "user": identity})
 
