@@ -38,18 +38,27 @@ OPS = {
 }
 
 PROVIDERS = {
-    "gmail": "google",
-    "google-calendar": "google",
-    "google-drive": "google",
-    "google-docs": "google",
-    "google-sheets": "google",
-    "google-slides": "google",
+    "gmail": "pipedream",
+    "google-calendar": "pipedream",
+    "google-drive": "pipedream",
+    "google-docs": "pipedream",
+    "google-sheets": "pipedream",
+    "google-slides": "pipedream",
     "linear": "linear",
     "notion": "notion",
     "outlook": "microsoft",
     "posthog": "posthog",
     "ramp": "ramp",
     "slack": "slack",
+}
+
+PIPEDREAM_APP_SLUGS = {
+    "gmail": "gmail",
+    "google-calendar": "google_calendar",
+    "google-drive": "google_drive",
+    "google-docs": "google_docs",
+    "google-sheets": "google_sheets",
+    "google-slides": "google_slides",
 }
 
 # These account-wide discovery operations intentionally run once per active
@@ -164,7 +173,7 @@ def run(script_path: Path) -> None:
             _print_result(_invoke(handler, None))
             return
 
-        connections = _provider_connections(PROVIDERS[service])
+        connections = _service_connections(service)
         if operation in DISCOVERY_OPERATIONS.get(service, set()):
             _reject_legacy_discovery_cursor_envs(service, operation, script_path.name)
             paginated = operation in PAGINATED_DISCOVERY_OPERATIONS.get(service, set())
@@ -309,15 +318,38 @@ def _load_connections() -> list[Connection]:
             raise ScriptError(
                 f"BUOY_CONNECTIONS[{index}].apiBaseURL must be a non-empty string when present."
             )
+        proxy = connection.get("proxy")
+        if connection["provider"] == "pipedream":
+            app_slug = connection.get("appSlug")
+            if not isinstance(app_slug, str) or app_slug == "":
+                raise ScriptError(
+                    f"BUOY_CONNECTIONS[{index}].appSlug must be a non-empty string for Pipedream connections."
+                )
+            if not isinstance(proxy, dict):
+                raise ScriptError(
+                    f"BUOY_CONNECTIONS[{index}].proxy must be an object for Pipedream connections."
+                )
+            for field in ("baseURL", "environment", "externalUserID", "accountID"):
+                if not isinstance(proxy.get(field), str) or proxy[field] == "":
+                    raise ScriptError(
+                        f"BUOY_CONNECTIONS[{index}].proxy.{field} must be a non-empty string."
+                    )
         connections.append(connection)
     return connections
 
 
-def _provider_connections(provider: str) -> list[Connection]:
-    connections = [connection for connection in _load_connections() if connection["provider"] == provider]
+def _service_connections(service: str) -> list[Connection]:
+    provider = PROVIDERS[service]
+    app_slug = PIPEDREAM_APP_SLUGS.get(service)
+    connections = [
+        connection
+        for connection in _load_connections()
+        if connection["provider"] == provider
+        and (app_slug is None or connection.get("appSlug") == app_slug)
+    ]
     if not connections:
         raise ScriptError(
-            f"No active {provider} connection. Load the {provider} app skill before running connector scripts."
+            f"No active {service} connection. Load the app skill before running connector scripts."
         )
     return connections
 

@@ -127,7 +127,7 @@ def reset_page_token(token: Any) -> None:
     _active_page_token.reset(token)
 
 
-def active_provider_connection_count(provider: str) -> int:
+def active_provider_connection_count(provider: str, app_slug: str | None = None) -> int:
     raw_connections = os.environ.get("BUOY_CONNECTIONS", "[]")
     try:
         connections = json.loads(raw_connections)
@@ -138,7 +138,9 @@ def active_provider_connection_count(provider: str) -> int:
     return max(
         1,
         sum(
-            isinstance(connection, dict) and connection.get("provider") == provider
+            isinstance(connection, dict)
+            and connection.get("provider") == provider
+            and (app_slug is None or connection.get("appSlug") == app_slug)
             for connection in connections
         ),
     )
@@ -199,6 +201,42 @@ def request(
     # Cloudflare bans urllib's default Python-urllib User-Agent on some
     # provider APIs (Ramp returns 403 error code 1010).
     req_headers.setdefault("User-Agent", "Buoy/1.0")
+    connection = _active_connection.get()
+    if connection is not None and connection.get("provider") == "pipedream":
+        proxy = connection.get("proxy")
+        if not isinstance(proxy, dict):
+            fail("The active Pipedream connection is missing proxy routing metadata. Reconnect it.")
+        base_url = proxy.get("baseURL")
+        environment = proxy.get("environment")
+        external_user_id = proxy.get("externalUserID")
+        account_id = proxy.get("accountID")
+        if not all(
+            isinstance(value, str) and value
+            for value in (base_url, environment, external_user_id, account_id)
+        ):
+            fail("The active Pipedream connection has invalid proxy routing metadata. Reconnect it.")
+        parsed_base = urllib.parse.urlsplit(base_url)
+        if (
+            parsed_base.scheme != "https"
+            or parsed_base.netloc != "api.pipedream.com"
+            or not re.fullmatch(r"/v1/connect/proj_[A-Za-z0-9]+/proxy", parsed_base.path)
+            or parsed_base.query
+            or parsed_base.fragment
+        ):
+            fail("The active Pipedream connection has an untrusted proxy URL. Reconnect it.")
+        if environment not in {"development", "production"}:
+            fail("The active Pipedream connection has an invalid environment. Reconnect it.")
+        parsed_target = urllib.parse.urlsplit(url)
+        if parsed_target.scheme != "https" or not parsed_target.netloc:
+            fail("Pipedream proxy targets must be absolute HTTPS URLs.")
+        url = build_url(
+            f"{base_url}/{b64url_encode(url.encode('utf-8'))}",
+            {
+                "external_user_id": external_user_id,
+                "account_id": account_id,
+            },
+        )
+        req_headers["x-pd-environment"] = environment
     if token is not None:
         req_headers["Authorization"] = f"Bearer {token}"
     if json_body is not None:
