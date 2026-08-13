@@ -188,7 +188,6 @@ def run(script_path: Path) -> None:
                     _select_target_connection(
                         service,
                         script_path.name,
-                        PROVIDERS[service],
                         connections,
                         args.buoy_connection_id,
                     )
@@ -206,7 +205,6 @@ def run(script_path: Path) -> None:
         connection = _select_target_connection(
             service,
             script_path.name,
-            PROVIDERS[service],
             connections,
             args.buoy_connection_id,
         )
@@ -246,7 +244,6 @@ def _reject_legacy_discovery_cursor_envs(
 def _select_target_connection(
     service: str,
     script_name: str,
-    provider: str,
     connections: list[Connection],
     connection_id: str | None,
 ) -> Connection:
@@ -261,8 +258,7 @@ def _select_target_connection(
         )
         if connection is None:
             raise ScriptError(
-                f"{connection_id} is not an active {provider} connection for "
-                f"{service}/{script_name}."
+                f"{connection_id} is not an active connection for {service}/{script_name}."
             )
         return connection
 
@@ -271,7 +267,7 @@ def _select_target_connection(
 
     choices = ", ".join(connection["connectionID"] for connection in connections)
     raise ScriptError(
-        f"{service}/{script_name} found {len(connections)} active {provider} connections. "
+        f"{service}/{script_name} found {len(connections)} active {service} connections. "
         "Pass --buoy-connection-id with the connection that owns the target entity or "
         f"mutation. Active choices: {choices}."
     )
