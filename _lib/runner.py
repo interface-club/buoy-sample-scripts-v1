@@ -38,12 +38,6 @@ OPS = {
 }
 
 PROVIDERS = {
-    "gmail": "pipedream",
-    "google-calendar": "pipedream",
-    "google-drive": "pipedream",
-    "google-docs": "pipedream",
-    "google-sheets": "pipedream",
-    "google-slides": "pipedream",
     "linear": "linear",
     "notion": "notion",
     "outlook": "microsoft",
@@ -339,13 +333,16 @@ def _load_connections() -> list[Connection]:
 
 
 def _service_connections(service: str) -> list[Connection]:
-    provider = PROVIDERS[service]
     app_slug = PIPEDREAM_APP_SLUGS.get(service)
+    providers = {PROVIDERS[service]} if app_slug is None else {"google", "pipedream"}
     connections = [
         connection
         for connection in _load_connections()
-        if connection["provider"] == provider
-        and (app_slug is None or connection.get("appSlug") == app_slug)
+        if connection["provider"] in providers
+        and (
+            connection["provider"] != "pipedream"
+            or connection.get("appSlug") == app_slug
+        )
     ]
     if not connections:
         raise ScriptError(

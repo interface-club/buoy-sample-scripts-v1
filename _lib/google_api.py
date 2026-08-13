@@ -146,6 +146,30 @@ def active_provider_connection_count(provider: str, app_slug: str | None = None)
     )
 
 
+def active_google_service_connection_count(app_slug: str) -> int:
+    raw_connections = os.environ.get("BUOY_CONNECTIONS", "[]")
+    try:
+        connections = json.loads(raw_connections)
+    except json.JSONDecodeError:
+        return 1
+    if not isinstance(connections, list):
+        return 1
+    return max(
+        1,
+        sum(
+            isinstance(connection, dict)
+            and (
+                connection.get("provider") == "google"
+                or (
+                    connection.get("provider") == "pipedream"
+                    and connection.get("appSlug") == app_slug
+                )
+            )
+            for connection in connections
+        ),
+    )
+
+
 def capture_json():
     values: list[Any] = []
     return _captured_json.set(values), values

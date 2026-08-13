@@ -142,9 +142,7 @@ def reply_in_thread() -> None:
 
 def search_messages() -> None:
     query = env("QUERY", "from:alice@example.com newer_than:30d -in:trash")
-    max_results_per_connection = max(
-        1, 12 // active_provider_connection_count("pipedream", "gmail")
-    )
+    max_results_per_connection = max(1, 12 // active_google_service_connection_count("gmail"))
     page_size = min(env_int("PAGE_SIZE", 100), 500)
     if page_size < 1:
         fail("PAGE_SIZE must be at least 1")
