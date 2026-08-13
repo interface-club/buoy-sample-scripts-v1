@@ -186,11 +186,13 @@ def search_messages() -> None:
         ("metadataHeaders", "Date"),
     ]
     with ThreadPoolExecutor(max_workers=SEARCH_HYDRATION_WORKERS) as executor:
-        labels_future = executor.submit(
+        labels_future = submit_with_context(
+            executor,
             request_json, "GET", f"{service_base}/labels", token=token
         )
         metadata_futures = [
-            executor.submit(
+            submit_with_context(
+                executor,
                 request_json,
                 "GET",
                 f"{service_base}/messages/{url_quote(message['id'])}",

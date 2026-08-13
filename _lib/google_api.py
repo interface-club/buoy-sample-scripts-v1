@@ -13,7 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Iterable, Mapping
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -113,6 +113,12 @@ def select_connection(connection: dict[str, Any]):
 
 def reset_connection(token: Any) -> None:
     _active_connection.reset(token)
+
+
+def submit_with_context(executor: Any, fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Submit one executor task with an independent copy of the current context."""
+    context = copy_context()
+    return executor.submit(context.run, fn, *args, **kwargs)
 
 
 def active_page_token() -> str:
